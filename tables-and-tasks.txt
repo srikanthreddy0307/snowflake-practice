@@ -1,0 +1,175 @@
+
+
+
+
+
+
+CREATE TABLE EMP (ID INT , NAME STRING) ;
+
+
+CREATE TRANSIENT TABLE EMP1 (ID INT , NAME STRING) ;
+
+CREATE TEMPORARY TABLE EMP (ID INT , NAME STRING) ;
+
+
+INSERT INTO EMP VALUES (101,'sRIKANTH') ;
+INSERT INTO EMP VALUES (102,'YOHESH') ;
+
+SELECT * FROM EMP ;
+
+SHOW TABLES; 
+
+
+
+
+
+COPY INTO OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT
+  FROM 's3://bucketsnowflakes3/Loan_payments_data.csv'
+  FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+
+--- create stage 
+
+create schema  stage ;
+
+create stage OUR_FIRST_DB.stage.LOAN_PAYMENT_stage 
+url = 's3://bucketsnowflakes3/Loan_payments_data.csv' 
+FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+list @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage ; 
+
+
+--- create external table
+
+
+
+CREATE OR REPLACE STAGE OUR_FIRST_DB.stage.ORDER_DETAILS_STAGE
+  URL = 's3://bucketsnowflakes3/'
+  FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = ',' SKIP_HEADER = 1)  ;
+
+--- create external table for OrderDetails
+
+CREATE OR REPLACE EXTERNAL TABLE OUR_FIRST_DB.PUBLIC.ORDER_DETAILS_EXT (
+  ORDER_ID VARCHAR AS (value:c1::VARCHAR),
+  AMOUNT VARCHAR AS (value:c2::VARCHAR),
+  PROFIT VARCHAR AS (value:c3::VARCHAR),
+  QUANTITY VARCHAR AS (value:c4::VARCHAR),
+  CATEGORY VARCHAR AS (value:c5::VARCHAR),
+  SUB_CATEGORY VARCHAR AS (value:c6::VARCHAR)
+)
+WITH LOCATION = @OUR_FIRST_DB.stage.ORDER_DETAILS_STAGE
+PATTERN = '.*OrderDetails.*'
+FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = ',' SKIP_HEADER = 1);
+
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDER_DETAILS_EXT LIMIT 10;
+
+
+--- create dynamic table for NETFLIX_DATA
+
+CREATE OR REPLACE DYNAMIC TABLE OUR_FIRST_DB.PUBLIC.NETFLIX_DATA_DYN
+  TARGET_LAG = '1 minutes'
+  WAREHOUSE = COMPUTE_WH
+  REFRESH_MODE = AUTO
+  INITIALIZE = ON_CREATE
+  AS
+    SELECT
+      SHOW_ID,
+      TITLE,
+      DIRECTOR,
+      COUNTRY
+    FROM OUR_FIRST_DB.PUBLIC.NETFLIX_DATA;
+
+
+   select * from  OUR_FIRST_DB.PUBLIC.NETFLIX_DATA_DYN ;
+   
+--count=31144
+
+delete from OUR_FIRST_DB.PUBLIC.NETFLIX_DATA  where country = 'India'
+
+--deleted 3692
+
+
+
+--- task   ---  
+
+
+ create table OUR_FIRST_DB.public.netfilx_final as (
+   select * from  OUR_FIRST_DB.PUBLIC.NETFLIX_DATA_DYN 
+   ) ;
+
+
+   select * from OUR_FIRST_DB.public.netfilx_final;
+
+--- create task to refresh netfilx_final every 2 minutes
+
+CREATE OR REPLACE TASK OUR_FIRST_DB.PUBLIC.NETFLIX_REFRESH_TASK
+  WAREHOUSE = COMPUTE_WH
+  SCHEDULE = '2 MINUTES'
+  AS
+    INSERT OVERWRITE INTO OUR_FIRST_DB.PUBLIC.NETFILX_FINAL
+    SELECT * FROM OUR_FIRST_DB.PUBLIC.NETFLIX_DATA_DYN;
+
+ALTER TASK OUR_FIRST_DB.PUBLIC.NETFLIX_REFRESH_TASK RESUME;
+
+SHOW TASKS IN SCHEMA OUR_FIRST_DB.PUBLIC;
+
+delete from OUR_FIRST_DB.PUBLIC.NETFLIX_DATA  where country = 'Mexico'
+--400 records deleted
+
+
+
+-- cron expression
+
+
+--  __________ minute (0-59)
+--  | ________ hour (0-23)
+--  | | ______ day of month (1-31, or L)
+--  | | | ____ month (1-12, JAN-DEC)
+--  | | | | __ day of week (0-6, SUN-SAT, or L)
+--  | | | | |
+--  | | | | |
+--  * * * * *
+
+-- 0/5 * * * * UTC
+
+-- Every five minutes, starting at the top of the hour. UTC time zone.
+
+-- 5 * * * * UTC
+
+-- The 5th minute of every hour. UTC time zone.
+
+-- 30 3 * * * UTC
+
+-- Every night at 3:30 a.m. UTC time zone.
+
+-- 0 6,18 * * * UTC
+
+-- Twice daily, at 6:00 a.m. and 6:00 p.m.UTC time zone.
+
+-- 0 3 * * MON-FRI UTC
+
+-- Weekdays at 3:00 a.m. UTC time zone.
+
+-- 0 0 1 * * UTC
+
+-- At midnight on the first day of every month. UTC time zone.
+
+-- 0 0 L * * UTC
+
+-- At midnight on the last day of every month. UTC time zone.
+
+-- task using cron expressions
+CREATE OR REPLACE TASK OUR_FIRST_DB.PUBLIC.NETFLIX_CRON_TASK
+  WAREHOUSE = COMPUTE_WH
+  SCHEDULE = 'USING CRON 0/5 * * * * UTC'
+  AS
+    INSERT OVERWRITE INTO OUR_FIRST_DB.PUBLIC.NETFILX_FINAL
+    SELECT * FROM OUR_FIRST_DB.PUBLIC.NETFLIX_DATA_DYN;
+
+ALTER TASK OUR_FIRST_DB.PUBLIC.NETFLIX_CRON_TASK RESUME;
+
+SHOW TASKS IN SCHEMA OUR_FIRST_DB.PUBLIC;
+
+   select * from OUR_FIRST_DB.public.netfilx_final;
+   
+delete from OUR_FIRST_DB.PUBLIC.NETFLIX_DATA  where country = 'Singapore'

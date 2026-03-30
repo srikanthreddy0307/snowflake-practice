@@ -1,0 +1,43 @@
+
+
+select * from employees;
+
+
+delete from employees where employee_id=39;
+
+
+-- ============================================
+-- METHOD 1: OFFSET (seconds before current time)
+-- ============================================
+SELECT * FROM HR.PUBLIC.EMPLOYEES AT(OFFSET => -60 * 5);
+
+-- Recover using OFFSET
+INSERT INTO HR.PUBLIC.EMPLOYEES
+    SELECT * FROM HR.PUBLIC.EMPLOYEES AT(OFFSET => -60 * 5)
+    WHERE EMPLOYEE_ID = 39;
+
+
+-- ============================================
+-- METHOD 2: TIMESTAMP
+-- ============================================
+SELECT * FROM HR.PUBLIC.EMPLOYEES AT(TIMESTAMP => '2026-03-27 12:15:00.000'::TIMESTAMP);
+
+-- Recover using TIMESTAMP
+INSERT INTO HR.PUBLIC.EMPLOYEES
+    SELECT * FROM HR.PUBLIC.EMPLOYEES AT(TIMESTAMP => '2026-03-27 12:15:00.000'::TIMESTAMP)
+    WHERE EMPLOYEE_ID = 39;
+
+
+-- ============================================
+-- METHOD 3: QUERY ID (BEFORE STATEMENT)
+-- ============================================
+SELECT * FROM HR.PUBLIC.EMPLOYEES BEFORE(STATEMENT => '01c34ebf-0001-96ba-000e-092e00045eca');
+
+-- Recover using QUERY ID
+INSERT INTO HR.PUBLIC.EMPLOYEES
+    SELECT * FROM HR.PUBLIC.EMPLOYEES BEFORE(STATEMENT => '01c34ebf-0001-96ba-000e-092e00045eca')
+    WHERE EMPLOYEE_ID = 39;
+
+
+
+
