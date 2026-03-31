@@ -1,0 +1,284 @@
+
+
+    copy into OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 
+  from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 
+  pattern = '.*Loan.*.csv' 
+  force= true ;
+  
+
+
+
+  ---orders -- 200/500
+--
+
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v6 (
+  Loan_ID STRING,
+  loan_status STRING,
+  Principal STRING,
+  terms STRING,
+  effective_date STRING,
+  due_date STRING,
+  paid_off_time STRING,
+  past_due_days STRING,
+  age STRING,
+  education varchar(3),
+  Gender STRING);
+
+
+     copy into OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v6
+  from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 
+  pattern = '.*Loan.*.csv' 
+  TRUNCATECOLUMNS = TRUE ;
+
+
+  select * from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v6 ;
+
+
+
+  ------------------ semi structured data 
+
+    select OBJECT_CONSTRUCT(*) from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v6 ;   // results will be displayed in json format
+
+
+
+
+SELECT PARSE_XML(
+  '<row><loan_id>' || loan_id || '</loan_id><loan_status>' || loan_status || '</loan_status></row>'
+) FROM OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v6;
+
+
+
+----json data into snowflake 
+
+create database MANAGE_DB;
+
+create schema EXTERNAL_STAGES;
+
+
+--stage 
+CREATE OR REPLACE stage MANAGE_DB.EXTERNAL_STAGES.JSONSTAGE
+     url='s3://bucketsnowflake-jsondemo';
+     
+
+     list @MANAGE_DB.EXTERNAL_STAGES.JSONSTAGE ;
+
+
+   --create table
+
+   create table hr_data (raw_data  variant) ;
+
+
+copy into hr_data  
+      from @MANAGE_DB.EXTERNAL_STAGES.JSONSTAGE 
+      FILE_FORMAT = (type=json);
+   
+
+select * from hr_data ;
+
+       {
+--   "city": "Bakersfield",
+--   "first_name": "Portia",
+--   "gender": "Male",
+--   "id": 1,
+--   "job": {
+--     "salary": 32000,
+--     "title": "Financial Analyst"
+--   },
+--   "last_name": "Gioani",
+--   "prev_company": [],
+--   "spoken_languages": [
+--     {
+--       "language": "Kazakh",
+--       "level": "Advanced"
+--     },
+--     {
+--       "language": "Lao",
+--       "level": "Basic"
+--     }
+--   ]
+-- }
+ 
+
+
+select $1:city:: string as city  ,
+        $1:first_name,
+        raw_data: gender,
+        $1:job.salary as salary ,
+        $1:job.title as titile ,
+        $1:spoken_languages[0].language 
+ from hr_data ;
+
+
+
+ select $1:city:: string as city  ,
+        $1:first_name,
+        raw_data: gender
+ from hr_data ;
+
+SELECT
+  hr.value:language::STRING AS language,
+  hr.value:level::STRING AS level
+FROM hr_data  ,
+LATERAL FLATTEN(input => $1:spoken_languages) hr;
+
+
+
+SELECT
+  raw_data:id:: int as id ,
+  hr.value:language::STRING AS language,
+  hr.value:level::STRING AS level
+FROM hr_data ,
+LATERAL FLATTEN(input => raw_data:spoken_languages) hr;
+
+  
+--
+
+----Task 
+
+-- 1) load - parquet data and convert into a table format 
+--   url = 's3://snowflakeparquetdemo'  
+
+-- 2) URL =    's3://bucketsnowflakes3'   without creating the tables manually need to load data 
+--      hint: infer_schema 
+-- 3) Create 1 aws free tier for tomorrow class 
+--     https://www.youtube.com/watch?v=CCaVgwVGlt8&list=PLFPnaYaZXRwxdm2HQ4xM_wwwfYMRk0tcf
+--    create sample bucket 
+
+
+
+-- 1) creating stage 
+-- 2) list stage
+-- 3) file format 
+-- 4) Create tables 
+-- 5) Copy command to load data 
+
+
+
+
+
+------------ parquet data into table format
+
+
+CREATE OR REPLACE stage MANAGE_DB.EXTERNAL_STAGES.PARQUET
+     url='s3://snowflakeparquetdemo';
+     
+
+     list @MANAGE_DB.EXTERNAL_STAGES.PARQUET ;
+
+
+ create table daily_sales (raw_data  variant) ;
+
+
+copy into daily_sales  
+      from @MANAGE_DB.EXTERNAL_STAGES.PARQUET
+      FILE_FORMAT = (type=parquet);
+   
+
+select * from daily_sales ;
+-- -- {
+--   "__index_level_0__": 7,
+--   "cat_id": "HOBBIES",
+--   "d": 489,
+--   "date": 1338422400000000,
+--   "dept_id": "HOBBIES_1",
+--   "id": "HOBBIES_1_008_CA_1_evaluation",
+--   "item_id": "HOBBIES_1_008",
+--   "state_id": "CA",
+--   "store_id": "CA_1",
+--   "value": 12
+--   }
+
+
+ select 
+        raw_data:__index_level_0__:: int as index_level_0,
+        raw_data:cat_id :: string as cat_id,
+        raw_data:d :: int as d,
+        raw_data:date :: string as date,
+        raw_data:dept_id :: string as dept_id,
+        raw_data:id :: string as id,
+        raw_data:item_id :: string as item_id,
+        raw_data:state_id :: string as state_id,
+        raw_data:store_id :: string as store_id,
+        raw_data:value :: int as value
+ from daily_sales ;
+
+
+
+------------ Load data using INFER_SCHEMA (no manual table creation)
+
+CREATE OR REPLACE STAGE MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE
+    url='s3://bucketsnowflakes3';
+
+LIST @MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE;
+
+CREATE OR REPLACE FILE FORMAT MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT
+    TYPE = csv
+    PARSE_HEADER = true;
+
+------------ 1) SAMPLEDATA (sampledata.csv - 2 columns: AGE, CUSTOMERNAME)
+
+SELECT * FROM TABLE(
+    INFER_SCHEMA(
+        LOCATION => '@MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/sampledata.csv',
+        FILE_FORMAT => 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT'
+    )
+);
+
+CREATE OR REPLACE TABLE MANAGE_DB.EXTERNAL_STAGES.SAMPLEDATA
+    USING TEMPLATE (
+        SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+        FROM TABLE(
+            INFER_SCHEMA(
+                LOCATION => '@MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/sampledata.csv',
+                FILE_FORMAT => 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT'
+            )
+        )
+    );
+
+COPY INTO MANAGE_DB.EXTERNAL_STAGES.SAMPLEDATA
+    FROM @MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/sampledata.csv
+    FILE_FORMAT = (FORMAT_NAME = 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT')
+    MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+SELECT * FROM MANAGE_DB.EXTERNAL_STAGES.SAMPLEDATA;
+
+------------ 2) ORDERDETAILS (OrderDetails.csv - 6 columns)
+
+CREATE OR REPLACE TABLE MANAGE_DB.EXTERNAL_STAGES.ORDERDETAILS
+    USING TEMPLATE (
+        SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+        FROM TABLE(
+            INFER_SCHEMA(
+                LOCATION => '@MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/OrderDetails.csv',
+                FILE_FORMAT => 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT'
+            )
+        )
+    );
+
+COPY INTO MANAGE_DB.EXTERNAL_STAGES.ORDERDETAILS
+    FROM @MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/OrderDetails.csv
+    FILE_FORMAT = (FORMAT_NAME = 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT')
+    MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+SELECT * FROM MANAGE_DB.EXTERNAL_STAGES.ORDERDETAILS;
+
+------------ 3) LOAN_PAYMENTS (Loan_payments_data.csv - 11 columns)
+
+CREATE OR REPLACE TABLE MANAGE_DB.EXTERNAL_STAGES.LOAN_PAYMENTS
+    USING TEMPLATE (
+        SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+        FROM TABLE(
+            INFER_SCHEMA(
+                LOCATION => '@MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/Loan_payments_data.csv',
+                FILE_FORMAT => 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT'
+            )
+        )
+    );
+
+COPY INTO MANAGE_DB.EXTERNAL_STAGES.LOAN_PAYMENTS
+    FROM @MANAGE_DB.EXTERNAL_STAGES.CSVSTAGE/Loan_payments_data.csv
+    FILE_FORMAT = (FORMAT_NAME = 'MANAGE_DB.EXTERNAL_STAGES.MY_CSV_FORMAT')
+    MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+SELECT * FROM MANAGE_DB.EXTERNAL_STAGES.LOAN_PAYMENTS;
+

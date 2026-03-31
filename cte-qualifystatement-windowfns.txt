@@ -1,0 +1,139 @@
+
+ select e.employee_id ,
+          e.first_name,
+          e.salary,
+          e.department_id, 
+          d.department_name
+          from employees e inner join departments d 
+          on e.department_id = d.department_id ;
+
+
+   // USING A COMMON TABLE EXPRESSION (CTE) 
+   
+ with cte_emp as 
+ (
+       select e.employee_id ,
+          e.first_name,
+          e.salary,
+          row_number() over (order by salary desc) as row_num
+          from employees e 
+          )
+          select * from cte_emp 
+          where row_num = 14  ;
+
+
+ // USING A QUALIFY STATEMENT 
+
+ 
+       select e.employee_id ,
+          e.first_name,
+          e.salary,
+          row_number() over (order by salary desc) as row_num
+          from employees e 
+          qualify row_num = 14 ;
+
+
+// USING A WINDOWS FUNCTION (ROW-NUMBER, RANK, DENSE-RANK, LEAD, LAG)
+
+
+         select e.employee_id ,
+          e.first_name,
+          e.salary,
+          row_number() over (order by salary desc) as row_num,
+          dense_rank() over (order by salary desc) as dense_rnk,
+          rank() over (order by salary desc) as rnk,
+          lead(salary) over (order by salary desc) as next_salary,
+          lag(salary) over (order by salary desc) as prev_salary
+          from employees e;
+
+
+
+          ----------------
+// FINDING 5TH MAX SALARY BY USING WINDOWS FUNCTION 
+
+          select e.employee_id ,
+          e.first_name,
+          e.salary,
+          dense_rank() over (order by salary desc) as drank
+          from employees e
+          qualify drank = 5
+
+
+// FINDING THE MAX SALARY IN EACH DEPARTMENT USING WINDOWS FUNCTION
+
+
+   select e.employee_id ,
+          e.first_name,
+          e.salary,
+          e.department_id, 
+          d.department_name,
+          dense_rank() over (partition by e.department_id  order by salary desc) as drank
+          from employees e inner join departments d 
+          on e.department_id = d.department_id 
+          qualify drank = 2
+          ;
+
+
+
+--------- employees who joined more than or equals to 5 in a month
+
+
+ with hire_counts as (
+  select 
+    date_trunc('month', hire_date) as hire_month,
+    count(*) over (partition by date_trunc('month', hire_date)) as hires
+  from employees
+)
+select 
+  e.*
+from employees e
+inner join (
+  select distinct hire_month 
+  from hire_counts 
+  where hires >= 5
+) mh
+on date_trunc('month', e.hire_date) = mh.hire_month
+order by e.hire_date;
+
+
+-------get profit for each month from sales 
+
+ CREATE TABLE HR.PUBLIC.SALES (
+    SL_NO NUMBER,
+    MONTHLY_SALES NUMBER
+);
+INSERT INTO HR.PUBLIC.SALES (SL_NO, MONTHLY_SALES) VALUES 
+(1, 10000),(2, 12000),(3, 15500),(4, 13800),(5, 18000),(6, 18300),(7, 19000),
+(8, 15600),(9, 20000),(10, 19800),(11, 21000),(12, 22000);
+
+
+select * from HR.PUBLIC.SALES;
+
+select 
+  SL_NO,
+  MONTHLY_SALES,
+  lag(MONTHLY_SALES) over (order by SL_NO) as prev_month_sales,
+  MONTHLY_SALES - lag(MONTHLY_SALES) over (order by SL_NO) as Profit
+from HR.PUBLIC.SALES
+order by SL_NO;
+
+
+
+
+-- class room notes assignment -5  -- 100  
+
+
+----q -- dispaly employee values   100 
+ --SQL select * from employees    
+ -- SQL  select edi ,name from employee 
+
+
+
+
+select e.*
+from employees e
+qualify count(*) over (partition by date_trunc('month', hire_date)) >= 5
+order by hire_date;
+
+
+select * from employees

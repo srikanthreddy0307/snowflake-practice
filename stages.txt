@@ -1,0 +1,214 @@
+
+
+create database OUR_FIRST_DB;
+
+--- s3://bucketsnowflakes3
+
+--s3://bucketsnowflakes3/Loan_payments_data.csv 
+
+
+
+
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT (
+  Loan_ID STRING,
+  loan_status STRING,
+  Principal STRING,
+  terms STRING,
+  effective_date STRING,
+  due_date STRING,
+  paid_off_time STRING,
+  past_due_days STRING,
+  age STRING,
+  education STRING,
+  Gender STRING);
+
+
+  COPY INTO OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT
+  FROM 's3://bucketsnowflakes3/Loan_payments_data.csv'
+  FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+
+
+
+
+select * from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT ; 
+
+select 
+loan_id , loan_status ,
+coalesce(past_due_days , 0 ) as past_due_days
+from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT;
+
+
+select 
+loan_id , loan_status ,
+ age 
+from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT
+
+
+------------------  ETL -----------------
+
+
+COPY INTO OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT
+  FROM 's3://bucketsnowflakes3/Loan_payments_data.csv'
+  FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+
+--- create stage 
+
+create schema  stage ;
+
+create stage OUR_FIRST_DB.stage.LOAN_PAYMENT_stage 
+url = 's3://bucketsnowflakes3/Loan_payments_data.csv' 
+FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+list @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage ; 
+
+
+copy into  OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v1
+from (
+select $1 ,
+       $2 ,
+       coalesce($8 , 0 ) as past_due_days,
+       $8 
+       from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage )
+
+
+ 
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v1 (
+  Loan_ID STRING,
+  loan_status STRING,
+  past_due_days STRING ,
+  age string);
+
+
+select * from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v1 ;
+
+
+
+
+
+
+
+----------- ELT 
+
+
+
+--stages 
+--internal 
+--external 
+--snowsql put 
+
+---Internal stages 
+
+create or replace stage OUR_FIRST_DB.stage.int_stage ;
+
+
+list @OUR_FIRST_DB.stage.int_stage ;
+
+
+
+COPY INTO OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT
+  FROM  @OUR_FIRST_DB.stage.int_stage
+  FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+  select * from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT ; 
+
+
+---External Stages 
+
+create stage OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 
+url = 's3://bucketsnowflakes3' 
+FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+list @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1  ;
+
+
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 (
+  Loan_ID STRING,
+  loan_status STRING,
+  Principal STRING,
+  terms STRING,
+  effective_date STRING,
+  due_date STRING,
+  paid_off_time STRING,
+  past_due_days STRING,
+  age STRING,
+  education STRING,
+  Gender STRING);
+
+
+  copy into OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 
+  from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 ;
+
+    copy into OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 
+  from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 
+  on_error = continue ;
+
+
+  select * from OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 ;
+
+
+   copy into OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 
+  from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 
+  files = ('Loan_payments_data.csv') ;
+
+     copy into OUR_FIRST_DB.PUBLIC.LOAN_PAYMENT_v5 
+  from @OUR_FIRST_DB.stage.LOAN_PAYMENT_stage_v1 
+  pattern = '.*Loan.*.csv' ;
+
+
+
+
+ 
+---ORDERS Details
+
+
+
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT,
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));
+
+
+    create stage OUR_FIRST_DB.stage.ORDERS_stage_v1 
+url = 's3://bucketsnowflakes3' 
+FILE_FORMAT = (type=csv    FIELD_DELIMITER = ',' SKIP_HEADER = 1 );
+
+list @OUR_FIRST_DB.stage.ORDERS_stage_v1  ;
+
+
+   copy into OUR_FIRST_DB.PUBLIC.ORDERS
+  from @OUR_FIRST_DB.stage.ORDERS_stage_v1 
+  on_error = continue ;
+
+
+  select * from OUR_FIRST_DB.PUBLIC.ORDERS;
+
+
+
+
+ --- ORDERS COUNT = 1500
+
+--- Separate Profit and Loss with Status
+
+SELECT
+    ORDER_ID,
+    AMOUNT,
+    PROFIT,
+    QUANTITY,
+    CATEGORY,
+    SUBCATEGORY,
+    CASE WHEN PROFIT >= 0 THEN PROFIT ELSE 0 END AS PROFIT,
+    CASE WHEN PROFIT < 0 THEN ABS(PROFIT) ELSE 0 END AS LOSS,
+    CASE WHEN PROFIT >= 0 THEN 'Profit' ELSE 'Loss' END AS STATUS
+    
+FROM OUR_FIRST_DB.PUBLIC.ORDERS; 
+
+--- Total Profit and Total Loss
+SELECT
+    SUM(CASE WHEN PROFIT >= 0 THEN PROFIT ELSE 0 END) AS TOTAL_PROFIT,
+    SUM(CASE WHEN PROFIT < 0 THEN ABS(PROFIT) ELSE 0 END) AS TOTAL_LOSS
+FROM OUR_FIRST_DB.PUBLIC.ORDERS;
